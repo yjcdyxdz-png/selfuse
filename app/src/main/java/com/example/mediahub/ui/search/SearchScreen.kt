@@ -65,7 +65,7 @@ class SearchViewModel : ViewModel() {
                                 else EngineManager.get(rule).search(1, key).items.map { it.toHit(rule) }
                             }
                         }.onSuccess { AppLog.i("Search", "${rule.name} 搜索「$key」返回 ${it.size} 条") }
-                        }.onFailure { AppLog.e("Search", "${rule.name} 搜索失败: ${it.message}") }
+                        .onFailure { AppLog.e("Search", "${rule.name} 搜索失败: ${it.message}") }
                         _ui.update { u ->
                             u.copy(hits = u.hits + r.getOrDefault(emptyList()), done = u.done + 1,
                                 failed = u.failed + if (r.isFailure) 1 else 0)
