@@ -81,6 +81,9 @@ object CookieStore : CookieJar {
 
     fun clear() = synchronized(lock) { ensure(); list.clear(); persist() }
 
+    /** 从存储重新读取（恢复备份后调用） */
+    fun reload() = synchronized(lock) { loaded = false; list.clear(); ensure() }
+
     fun count(): Int = synchronized(lock) { ensure(); list.size }
 
     private fun persist() {

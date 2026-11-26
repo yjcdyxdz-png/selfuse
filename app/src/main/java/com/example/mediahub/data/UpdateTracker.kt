@@ -58,6 +58,12 @@ object UpdateTracker {
     /** key → 新增数量（只包含有更新的） */
     fun observe(): StateFlow<Map<String, Int>> { ensure(); return _news.asStateFlow() }
 
+    /** 从存储重新读取（恢复备份后调用） */
+    fun reload() {
+        synchronized(this) { loaded = false }
+        ensure()
+    }
+
     val lastCheckAt: Long get() = prefs.getLong("last_check", 0L)
 
     /** 打开详情 / 播放 / 阅读时调用：当前数量视为已看过，清除角标 */

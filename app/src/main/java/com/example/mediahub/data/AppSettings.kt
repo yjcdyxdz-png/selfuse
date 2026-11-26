@@ -10,7 +10,9 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 
 private val Context.appStore: DataStore<Preferences> by preferencesDataStore(name = "app_settings")
 
@@ -67,4 +69,7 @@ object AppSettings {
     /** 批量检测规则时，没有分类/发现的源用这个关键词搜索 */
     fun healthKeyword(ctx: Context): Flow<String> = ctx.appStore.data.map { it[HEALTH_KW] ?: "我" }
     suspend fun setHealthKeyword(ctx: Context, v: String) { ctx.appStore.edit { it[HEALTH_KW] = v } }
+
+    suspend fun exportJson(ctx: Context): JSONObject = PrefsIO.fromPreferences(ctx.appStore.data.first())
+    suspend fun importJson(ctx: Context, o: JSONObject) { ctx.appStore.edit { PrefsIO.applyToPreferences(it, o) } }
 }

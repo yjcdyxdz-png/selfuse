@@ -167,12 +167,16 @@ fun NovelReaderScreen(ruleId: String, bookUrl: String, index: Int, onBack: () ->
             else -> {
                 val ct = remember(ui.token, ui.paragraphs) { ChapterText(title, ui.paragraphs) }
                 val hasNext = ui.index + 1 < ui.chapters.size
-                if (settings.pageMode == ReaderSettings.MODE_PAGE) PagedText(ct, style, fg, curOffset, report,
-                    onPrevChapter = { if (ui.index > 0) vm.open(ui.index - 1, OFFSET_END) },
-                    onNextChapter = { if (hasNext) vm.open(ui.index + 1) },
-                    onCenter = { showBars = !showBars })
-                else ScrollText(ct, style, fg, curOffset, report, hasNext,
-                    onNextChapter = { vm.open(ui.index + 1) }, onCenter = { showBars = !showBars })
+                // 每次打开章节都重建阅读区域：否则已预加载的下一章会瞬间显示，
+                // 列表却还停在上一章底部的滚动位置，看起来只有最后一小段
+                key(ui.token) {
+                    if (settings.pageMode == ReaderSettings.MODE_PAGE) PagedText(ct, style, fg, curOffset, report,
+                        onPrevChapter = { if (ui.index > 0) vm.open(ui.index - 1, OFFSET_END) },
+                        onNextChapter = { if (hasNext) vm.open(ui.index + 1) },
+                        onCenter = { showBars = !showBars })
+                    else ScrollText(ct, style, fg, curOffset, report, hasNext,
+                        onNextChapter = { vm.open(ui.index + 1) }, onCenter = { showBars = !showBars })
+                }
             }
         }
 

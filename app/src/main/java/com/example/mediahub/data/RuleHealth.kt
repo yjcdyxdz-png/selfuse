@@ -46,6 +46,12 @@ object RuleHealth {
         _all.update { it + (ruleId to h) }
     }
 
+    /** 从存储重新读取（恢复备份后调用） */
+    fun reload() {
+        synchronized(this) { loaded = false }
+        ensure()
+    }
+
     fun remove(ruleId: String) {
         ensure()
         prefs.edit().remove(ruleId).apply()

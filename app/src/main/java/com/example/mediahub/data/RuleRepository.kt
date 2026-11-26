@@ -49,6 +49,7 @@ class RuleRepository(private val ctx: Context, private val dao: RuleDao) {
                 if (!e.isDirectory) entries[e.name.replace('\\', '/')] = zis.readBytes()
             }
         }
+        if (entries.containsKey("backup.json")) error("这是 MediaHub 备份文件，请到「设置 → 备份与恢复」里恢复")
         // 允许 manifest.json 位于一层子目录内
         val manifestKey = entries.keys.filter { it.endsWith("manifest.json") }.minByOrNull { it.count { c -> c == '/' } }
             ?: error("zip 中缺少 manifest.json")

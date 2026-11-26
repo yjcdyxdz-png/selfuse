@@ -5,7 +5,9 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONObject
 
 data class ReaderSettings(
     val fontSize: Float = 18f,
@@ -48,4 +50,7 @@ object ReaderPrefs {
             it[FONT] = s.fontSize; it[LINE] = s.lineSpacing; it[THEME] = s.theme; it[MODE] = s.pageMode; it[NIGHT] = s.night
         }
     }
+
+    suspend fun exportJson(ctx: Context): JSONObject = PrefsIO.fromPreferences(ctx.readerStore.data.first())
+    suspend fun importJson(ctx: Context, o: JSONObject) { ctx.readerStore.edit { PrefsIO.applyToPreferences(it, o) } }
 }
