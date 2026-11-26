@@ -46,6 +46,9 @@ object DetailCache {
         App.instance.appScope.launch { DiskCache.write(NS, k, json.encodeToString(DetailResult.serializer(), d)) }
     }
 
+    /** 缓存数据的获取时间（毫秒时间戳），没有时为 0 */
+    fun loadedAtMs(ruleId: String, sourceId: String): Long = loadedAt[key(ruleId, sourceId)] ?: 0L
+
     fun ageMs(ruleId: String, sourceId: String): Long =
         System.currentTimeMillis() - (loadedAt[key(ruleId, sourceId)] ?: 0L)
 
@@ -71,7 +74,9 @@ class DetailViewModel(private val ruleId: String, private val sourceId: String) 
             val cached = if (force) null else DetailCache.get(ruleId, sourceId)
             if (cached != null) {
                 // 先显示缓存；缓存较旧时在后台更新，看到新分集
-                if (DetailCache.ageMs(ruleId, sourceId) > REFRESH_MS) refreshSilently(rule)
+                // 缓存较旧，或者规则在缓存之后重新导入过：后台更新
+                if (DetailCache.ageMs(ruleId, sourceId) > REFRESH_MS ||
+                    DetailCache.loadedAtMs(ruleId, sourceId) < rule.importedAt) refreshSilently(rule)
                 seen(cached)
                 DetailState.Ok(rule, cached)
             } else {

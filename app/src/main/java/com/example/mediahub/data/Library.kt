@@ -76,4 +76,8 @@ object Library {
 
     fun groupTag(group: String?) = group?.let { "g:$it" } ?: ""
     fun groupOf(extra: String): String? = if (extra.startsWith("g:")) extra.substring(2) else null
+
+    /** 漫画「每个分集一话」模式下记录第几话 */
+    fun epTag(ep: Int) = "e:$ep"
+    fun epOf(extra: String): Int? = if (extra.startsWith("e:")) extra.substring(2).toIntOrNull() else null
 }

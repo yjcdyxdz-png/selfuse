@@ -46,7 +46,8 @@ fun progressLabel(e: ShelfEntry): String {
     val p = e.progress ?: return "未开始"
     return when (e.item.contentType) {
         "video" -> "看到 " + p.chapterTitle.ifBlank { "第${p.chapterIndex + 1}集" } + " " + fmtTime(p.position)
-        "comic" -> "读到 第${p.position + 1}页"
+        "comic" -> if (p.extra.isNotEmpty() && p.chapterTitle.isNotBlank()) "读到 ${p.chapterTitle} 第${p.position + 1}页"
+            else "读到 第${p.position + 1}页"
         else -> "读到 " + p.chapterTitle.ifBlank { "第${p.chapterIndex + 1}章" }
     }
 }

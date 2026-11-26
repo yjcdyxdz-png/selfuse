@@ -136,9 +136,26 @@ class JsModuleEngine(
         val r = callRaw("resolveMedia", buildJsonObject { put("chapter", json.encodeToJsonElement(chapter)) })
         return when (r) {
             is JsonPrimitive -> MediaUrl(url = r.content)
-            else -> json.decodeFromJsonElement(r.normalize())
+            // 直接返回图片数组：当作一话的全部页面
+            is JsonArray -> imageList(r).let { MediaUrl(url = it.firstOrNull().orEmpty(), images = it) }
+            is JsonObject -> {
+                val imgs = IMAGE_KEYS.firstNotNullOfOrNull { k -> (r[k] as? JsonArray)?.let(::imageList) }.orEmpty()
+                val rest = JsonObject(r.filterKeys { it !in IMAGE_KEYS })
+                val m = json.decodeFromJsonElement<MediaUrl>(rest.normalize())
+                m.copy(url = m.url.ifBlank { imgs.firstOrNull().orEmpty() }, images = imgs)
+            }
+            else -> MediaUrl()
         }
     }
+
+    /** 图片数组：元素可以是字符串，也可以是 {url} / {src} 对象 */
+    private fun imageList(a: JsonArray): List<String> = a.mapNotNull { e ->
+        when (e) {
+            is JsonPrimitive -> e.contentOrNull
+            is JsonObject -> e.str("url") ?: e.str("src")
+            else -> null
+        }
+    }.filter { it.isNotBlank() }
 
     suspend fun transformImage(info: JsonObject): JsonElement? {
         ensureLoaded()
@@ -155,6 +172,8 @@ class JsModuleEngine(
     private fun Array<Any?>.str(i: Int) = getOrNull(i)?.toString() ?: ""
     private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
 }
+
+private val IMAGE_KEYS = setOf("images", "urls", "pages")
 
 private const val TICK = "typeof __runTimers === 'function' ? __runTimers() : 0"
 

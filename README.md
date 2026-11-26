@@ -75,3 +75,12 @@ GitHub Actions（JDK 17）自动编译 release APK。在仓库 Settings → Secr
 - 恢复是合并：同一个规则 / 作品以备份为准，本机多出来的不删除；阅读进度保留较新的一条
 - 不包含缓存；Cookie 默认不导出（相当于登录凭证）
 - 备份 zip 结构：`backup.json`、`rules.json` + `rules/`、`shelf.json`、`progress.json`、`settings/`、`prefs/`
+
+## 漫画分话（下一话 / 选择话数）
+阅读器支持多话漫画：底部栏有「上一话 / 下一话」，每话末尾有「下一话」按钮，右上角 ☰ 可以输入数字跳到第几话或从列表选择。
+模块有三种方式表示「话」：
+- **每个分集一话**：`resolveMedia` 返回 `{images:[...], referer}`（也接受 `urls` / `pages`，或直接返回数组），这些图片就是这一话的页面。
+  建议在 manifest 写 `"comicEpisodes": "chapter"`，详情页会直接显示「共 N 话」；不写的话阅读器会先调用一次 resolveMedia 判断
+- **按 group 分话**：分集的 `group` 字段写话名，同一 group 的分集是这一话的各页（每个分集一张图）
+- **只有一话**：所有分集都是页面（原来的做法）
+manifest 的 `"comicEpisodes"` 可以写 `chapter` / `group` / `none` 强制指定。

@@ -61,6 +61,8 @@ data class MediaUrl(
     val quality: String = "",
     /** 可选：额外请求头，如 {"Cookie": "...", "User-Agent": "..."}，播放视频和加载漫画图片时都会带上 */
     val headers: JsonElement? = null,
+    /** 可选：漫画一话的全部图片地址（也接受 urls / pages），用于「每个分集一话」 */
+    val images: List<String> = emptyList(),
 ) {
     fun headerMap(): Map<String, String> =
         (headers as? JsonObject)?.entries
