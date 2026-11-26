@@ -10,11 +10,9 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
--dontwarn com.fasterxml.jackson.**
--dontwarn org.codehaus.jettison.**
--dontwarn org.jspecify.**
 -keepattributes *Annotation*, Signature, InnerClasses
-# JsonPath 的可选 JSON 提供者
+
+# Jayway JsonPath 的可选 JSON 提供者（本项目只用默认的 json-smart）
 -dontwarn com.google.gson.**
 -dontwarn org.apache.tapestry5.json.**
 -dontwarn com.fasterxml.jackson.**

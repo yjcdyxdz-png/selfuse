@@ -59,13 +59,26 @@ var globalThis = this;
     /** main.js 执行完后调用，固定导出对象引用 */
     const val CAPTURE = "globalThis.__mod = module.exports; typeof __mod;"
 
-    /** 调用模块函数，结果统一 JSON 化（支持同步返回值与 Promise） */
+    /**
+     * 调用模块函数。不直接返回 Promise（引擎会把它转成字符串 "Promise {...}"），
+     * 而是把结果写进全局变量 __res / __err，再由 [READ] 读取。
+     * 同步返回值直接写入；返回 Promise 时等它完成后写入。
+     */
     fun call(fn: String, argsJson: String) = """
-(async function(){
-  var f = __mod[$fn];
-  if (typeof f !== 'function') throw new Error('模块未导出函数: ' + $fn);
-  var r = await f.apply(__mod, $argsJson);
-  return JSON.stringify(r === undefined ? null : r);
-})()
+globalThis.__res = undefined; globalThis.__err = undefined; globalThis.__done = false;
+(function(){
+  function ok(r){ globalThis.__res = JSON.stringify(r === undefined ? null : r); globalThis.__done = true; }
+  function fail(e){ globalThis.__err = String((e && (e.stack || e.message)) || e); globalThis.__done = true; }
+  try {
+    var f = __mod[$fn];
+    if (typeof f !== 'function') throw new Error('模块未导出函数: ' + $fn);
+    var r = f.apply(__mod, $argsJson);
+    if (r && typeof r.then === 'function') r.then(ok, fail); else ok(r);
+  } catch (e) { fail(e); }
+})();
+0;
 """
+
+    /** 读取调用结果：未完成返回 "\u0002"，出错返回 "\u0001" + 错误信息 */
+    const val READ = """(globalThis.__done ? (globalThis.__err !== undefined ? '\u0001' + globalThis.__err : globalThis.__res) : '\u0002')"""
 }

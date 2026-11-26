@@ -1,7 +1,6 @@
 package com.example.mediahub.engine
 
 import com.dokar.quickjs.QuickJs
-import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.evaluate
 import com.example.mediahub.util.AppLog
 import kotlinx.coroutines.*
@@ -68,7 +67,18 @@ class JsModuleEngine(
                 val q = ensure()
                 val code = HostPrelude.call(JsonPrimitive(fn).toString(), JsonArray(args.toList()).toString())
                 try {
-                    val r = withTimeout(timeoutMs) { q.evaluate<String>(code, "call_$fn.js") }
+                    val r = withTimeout(timeoutMs) {
+                        q.evaluate<Any?>(code, "call_$fn.js")
+                        var out = q.evaluate<String>(HostPrelude.READ, "read.js")
+                        // Promise 尚未完成：执行空脚本推动微任务队列，直到有结果
+                        while (out == "\u0002") {
+                            delay(5)
+                            q.evaluate<Any?>("0", "tick.js")
+                            out = q.evaluate<String>(HostPrelude.READ, "read.js")
+                        }
+                        out
+                    }
+                    if (r.startsWith("\u0001")) throw JsModuleException(r.substring(1))
                     json.parseToJsonElement(r)
                 } catch (t: Throwable) {
                     AppLog.e("Engine", "$sourceId.$fn 失败: ${t.message}", t)

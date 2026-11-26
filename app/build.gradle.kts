@@ -36,8 +36,8 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // 有正式 keystore 就用它；没有则用 debug 密钥签名，保证产出的 APK 可直接安装
-            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
+            // 未配置 Secrets 时输出未签名 APK（可在手机上用 MT 管理器签名）
+            signingConfigs.findByName("release")?.let { signingConfig = it }
         }
     }
     compileOptions {
@@ -72,7 +72,6 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.jsoup.xpath)
     implementation(libs.json.path)
-    implementation(libs.json.smart)
     implementation(libs.media3.exoplayer)
     implementation(libs.media3.hls)
     implementation(libs.media3.ui)
