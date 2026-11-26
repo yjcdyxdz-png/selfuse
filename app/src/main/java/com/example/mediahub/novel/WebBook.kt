@@ -1,9 +1,12 @@
 package com.example.mediahub.novel
 
+import com.example.mediahub.App
 import com.example.mediahub.data.RuleEntity
 import com.example.mediahub.data.RuleKind
 import com.example.mediahub.util.AppLog
+import com.example.mediahub.util.DiskCache
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.jsoup.Jsoup
@@ -192,14 +195,35 @@ object BookEngines {
     fun invalidate(id: String) { map.remove(id)?.close() }
 }
 
-/** 内存缓存：搜索结果、书籍信息+目录、正文 */
+/** 缓存：搜索结果（内存）、书籍信息+目录和正文（内存 + 磁盘） */
 object NovelCache {
     val hits = ConcurrentHashMap<String, SearchBook>()
     val books = ConcurrentHashMap<String, BookData>()
+    /** 每本书目录的获取时间，用来判断是否需要后台更新 */
+    val loadedAt = ConcurrentHashMap<String, Long>()
     private val contents = object : LinkedHashMap<String, String>(32, 0.75f, true) {
         override fun removeEldestEntry(e: MutableMap.MutableEntry<String, String>?) = size > 30
     }
     fun key(ruleId: String, bookUrl: String) = "$ruleId|$bookUrl"
-    fun content(k: String, i: Int): String? = synchronized(contents) { contents["$k#$i"] }
-    fun putContent(k: String, i: Int, s: String) = synchronized(contents) { contents["$k#$i"] = s }
+
+    /** 正文按章节地址缓存（目录有增删时不会错位） */
+    suspend fun content(k: String, chapterUrl: String): String? {
+        val ck = "$k#$chapterUrl"
+        synchronized(contents) { contents[ck] }?.let { return it }
+        val s = withContext(Dispatchers.IO) { DiskCache.read("content", ck) } ?: return null
+        synchronized(contents) { contents[ck] = s }
+        return s
+    }
+
+    fun putContent(k: String, chapterUrl: String, s: String) {
+        if (s.isBlank()) return
+        val ck = "$k#$chapterUrl"
+        synchronized(contents) { contents[ck] = s }
+        App.instance.appScope.launch { DiskCache.write("content", ck, s) }
+    }
+
+    fun clearMemory() {
+        books.clear(); loadedAt.clear()
+        synchronized(contents) { contents.clear() }
+    }
 }

@@ -4,7 +4,9 @@ import android.util.Base64
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.evaluate
+import com.example.mediahub.net.CookieStore
 import com.example.mediahub.util.AppLog
+import com.example.mediahub.util.JsAssets
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
@@ -21,8 +23,9 @@ import java.util.concurrent.Executors
 
 /**
  * 书源 @js: 的简易运行环境。提供 java.ajax / base64Decode / base64Encode / md5Encode / md5Encode16 /
- * encodeURI / put / get / log，以及变量 result、baseUrl、key、page、src。
- * 不是完整的 Rhino 环境：调用 Java 类（Packages.xxx）的书源不受支持。
+ * encodeURI / put / get / getCookie / log、cookie 对象，以及变量 result、baseUrl、key、page、src。
+ * 内置迷你 Jsoup（assets/js/minijsoup.js），兼容 org.jsoup.Jsoup.parse 和 Packages.java.lang.String。
+ * 不是完整的 Rhino 环境：其他 Java 类无法调用。
  */
 class LegadoJs(
     private val tag: String,
@@ -49,7 +52,13 @@ class LegadoJs(
         q.function("__j_put") { a -> vars[a.s(0)] = a.s(1); a.s(1) }
         q.function("__j_get") { a -> vars[a.s(0)] ?: "" }
         q.function("__j_log") { a -> AppLog.i("BookJs:$tag", a.s(0)); null }
+        q.function("__j_cookieGet") { a -> CookieStore.header(a.s(0)) }
+        q.function("__j_cookieSet") { a -> CookieStore.set(a.s(0), a.s(1)); null }
+        q.function("__j_cookieRemove") { a -> CookieStore.remove(a.s(0)); null }
+        q.evaluate<Any?>(JsAssets.polyfill, "polyfill.js")
         q.evaluate<Any?>(PRELUDE)
+        runCatching { q.evaluate<Any?>(JsAssets.miniJsoup, "minijsoup.js") }
+            .onFailure { AppLog.e("BookJs:$tag", "内置 Jsoup 兼容层加载失败", it) }
         loadJsLib(q)
         qjs = q
         return q
@@ -130,9 +139,24 @@ var java = {
   put: function(k, v){ return __j_put(String(k), String(v)); },
   get: function(k){ return __j_get(String(k)); },
   log: function(s){ __j_log(String(s)); return s; },
+  getCookie: function(u, k){ return cookie.getCookie(u, k); },
   timeFormat: function(t){ return new Date(Number(t)).toISOString().replace('T', ' ').substring(0, 19); }
 };
-var cookie = { getCookie: function(){ return ''; }, setCookie: function(){} };
+var cookie = {
+  getCookie: function(u, k){
+    var c = __j_cookieGet(String(u == null ? '' : u));
+    if (!k) return c;
+    var ps = c.split(';');
+    for (var i = 0; i < ps.length; i++) {
+      var p = ps[i].trim(), e = p.indexOf('=');
+      if (e > 0 && p.substring(0, e) === String(k)) return p.substring(e + 1);
+    }
+    return '';
+  },
+  setCookie: function(u, c){ __j_cookieSet(String(u == null ? '' : u), String(c == null ? '' : c)); },
+  replaceCookie: function(u, c){ __j_cookieSet(String(u == null ? '' : u), String(c == null ? '' : c)); },
+  removeCookie: function(u){ __j_cookieRemove(String(u == null ? '' : u)); }
+};
 var console = { log: java.log, info: java.log, warn: java.log, error: java.log };
 """
     }

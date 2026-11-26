@@ -2,7 +2,9 @@ package com.example.mediahub.engine
 
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /** 与 JS 模块约定的返回格式。所有字段都有默认值，模块少返回字段也能解析。 */
 @Serializable
@@ -53,4 +55,16 @@ data class DetailResult(
 )
 
 @Serializable
-data class MediaUrl(val url: String = "", val referer: String = "", val quality: String = "")
+data class MediaUrl(
+    val url: String = "",
+    val referer: String = "",
+    val quality: String = "",
+    /** 可选：额外请求头，如 {"Cookie": "...", "User-Agent": "..."}，播放视频和加载漫画图片时都会带上 */
+    val headers: JsonElement? = null,
+) {
+    fun headerMap(): Map<String, String> =
+        (headers as? JsonObject)?.entries
+            ?.filter { it.key.isNotBlank() && it.value !is JsonNull }
+            ?.associate { it.key to ((it.value as? JsonPrimitive)?.content ?: it.value.toString()) }
+            ?: emptyMap()
+}

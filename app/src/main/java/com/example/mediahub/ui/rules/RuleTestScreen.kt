@@ -23,6 +23,8 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.mediahub.App
 import com.example.mediahub.data.RuleEntity
+import com.example.mediahub.data.RuleHealth
+import com.example.mediahub.data.RuleHealthInfo
 import com.example.mediahub.data.RuleKind
 import com.example.mediahub.engine.*
 import com.example.mediahub.novel.BookEngines
@@ -52,8 +54,23 @@ class RuleTestViewModel(private val ruleId: String) : ViewModel() {
         viewModelScope.launch {
             _running.value = true; _steps.value = emptyList()
             try { if (r.kind == RuleKind.LEGADO_BOOK) runBook(r, kw.trim()) else runJs(r, kw.trim()) }
-            finally { _running.value = false }
+            finally { _running.value = false; recordHealth(r) }
         }
+    }
+
+    /** 把这次测试结果记到规则卡片上（被中断、没填关键词的不记） */
+    private fun recordHealth(r: RuleEntity) {
+        val st = _steps.value
+        if (st.isEmpty() || st.any { it.ok == null } || st.any { it.output == "请输入关键词" }) return
+        val bad = st.firstOrNull { it.ok == false }
+        RuleHealth.record(r.id, RuleHealthInfo(
+            ok = bad == null,
+            at = System.currentTimeMillis(),
+            ms = st.sumOf { it.ms },
+            step = bad?.name.orEmpty(),
+            message = bad?.output?.lineSequence()?.firstOrNull().orEmpty().take(200),
+            via = "测试页",
+        ))
     }
 
     private suspend fun <T> step(name: String, render: (T) -> String, block: suspend () -> T): T? {

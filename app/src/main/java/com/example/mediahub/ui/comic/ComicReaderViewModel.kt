@@ -8,6 +8,7 @@ import com.example.mediahub.comic.ComicSupport
 import com.example.mediahub.data.Library
 import com.example.mediahub.data.Progress
 import com.example.mediahub.data.RuleEntity
+import com.example.mediahub.data.UpdateTracker
 import com.example.mediahub.engine.*
 import com.example.mediahub.ui.detail.DetailCache
 import kotlinx.coroutines.flow.*
@@ -16,7 +17,14 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.ConcurrentHashMap
 
-data class ComicPage(val chapter: Chapter, val url: String?, val referer: String, val error: String? = null)
+data class ComicPage(
+    val chapter: Chapter,
+    val url: String?,
+    val referer: String,
+    val error: String? = null,
+    /** resolveMedia 返回的额外请求头 */
+    val headers: Map<String, String> = emptyMap(),
+)
 
 data class ComicUi(
     val rule: RuleEntity? = null,
@@ -44,6 +52,7 @@ class ComicReaderViewModel(
                 val d = DetailCache.get(ruleId, sourceId)
                     ?: engine.detail(sourceId).also { DetailCache.put(ruleId, sourceId, it) }
                 engine.ensureLoaded()
+                UpdateTracker.markSeen(Library.key(ruleId, sourceId), d.chapters.size)
                 val pages = ComicSupport.pages(d, group).map { c ->
                     ComicPage(c, c.videoUrl.takeIf(ComicSupport::isImageUrl), rule.baseUrl)
                 }
@@ -63,7 +72,7 @@ class ComicReaderViewModel(
                 _ui.update { u ->
                     u.copy(pages = u.pages.toMutableList().also { list ->
                         list[i] = r.fold(
-                            { m -> p.copy(url = m.url, referer = m.referer.ifBlank { p.referer }, error = null) },
+                            { m -> p.copy(url = m.url, referer = m.referer.ifBlank { p.referer }, error = null, headers = m.headerMap()) },
                             { e -> p.copy(error = e.message) })
                     })
                 }

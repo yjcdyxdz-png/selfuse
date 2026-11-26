@@ -26,6 +26,7 @@ import com.example.mediahub.ui.player.PlayerScreen
 import com.example.mediahub.ui.rules.RuleImportScreen
 import com.example.mediahub.ui.rules.RuleTestScreen
 import com.example.mediahub.ui.search.SearchScreen
+import com.example.mediahub.ui.settings.SettingsScreen
 import com.example.mediahub.ui.shelf.ShelfScreen
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -64,9 +65,11 @@ fun AppRoot() {
             composable("explore") { ExploreScreen(onOpen = openHit) }
             composable("search") { SearchScreen(onOpen = openHit) }
             composable("rules") {
-                RuleImportScreen(onTest = { r -> nav.navigate(Routes.test(r.id)) }, onLogs = { nav.navigate("logs") })
+                RuleImportScreen(onTest = { r -> nav.navigate(Routes.test(r.id)) }, onLogs = { nav.navigate("logs") },
+                    onSettings = { nav.navigate("settings") })
             }
             composable("logs") { LogScreen(onBack = { nav.popBackStack() }) }
+            composable("settings") { SettingsScreen(onBack = { nav.popBackStack() }) }
             composable("ruletest/{rule}", arguments = listOf(str("rule"))) { e ->
                 RuleTestScreen(e.arguments!!.getString("rule")!!, onBack = { nav.popBackStack() }, onLogs = { nav.navigate("logs") })
             }

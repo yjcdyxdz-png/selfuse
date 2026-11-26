@@ -98,6 +98,7 @@ private fun PageImage(i: Int, p: ComicPage, ui: ComicUi, onRetry: () -> Unit) {
         ImageRequest.Builder(ctx).data(url)
             .addHeader("User-Agent", HostBridge.DEFAULT_UA)
             .apply { if (p.referer.isNotBlank()) addHeader("Referer", p.referer) }
+            .apply { p.headers.forEach { (k, v) -> setHeader(k, v) } }
             .apply {
                 val e = ui.engine
                 if (ui.hasTransform && e != null)

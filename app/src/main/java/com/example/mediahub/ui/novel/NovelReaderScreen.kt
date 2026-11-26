@@ -71,6 +71,7 @@ class NovelReaderViewModel(private val ruleId: String, private val bookUrl: Stri
             runCatching { loadBook(ruleId, bookUrl) }
                 .onSuccess { (r, d) ->
                     rule = r
+                    UpdateTracker.markSeen(key, d.chapters.size)
                     _ui.update { it.copy(bookName = d.info.name, chapters = d.chapters) }
                     open(start, if (saved?.chapterIndex == start) saved.position.toInt() else 0)
                 }
@@ -101,8 +102,9 @@ class NovelReaderViewModel(private val ruleId: String, private val bookUrl: Stri
     }
 
     private suspend fun fetch(r: RuleEntity, chapters: List<BookChapter>, i: Int): String =
-        NovelCache.content(cacheKey, i) ?: BookEngines.get(r).content(chapters[i], chapters.getOrNull(i + 1)?.url)
-            .also { NovelCache.putContent(cacheKey, i, it) }
+        NovelCache.content(cacheKey, chapters[i].url)
+            ?: BookEngines.get(r).content(chapters[i], chapters.getOrNull(i + 1)?.url)
+                .also { NovelCache.putContent(cacheKey, chapters[i].url, it) }
 
     class Factory(private val r: String, private val u: String, private val i: Int) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

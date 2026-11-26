@@ -41,6 +41,12 @@ var globalThis = this;
     nodeText: function(node){ return textOf(nodeOf(node)).replace(/\s+/g, ' ').trim(); },
     dramaId: function(a){ return __h_dramaId(String(a)); },
     chapterId: function(a, b){ return __h_chapterId(String(a), String(b == null ? '' : b)); },
+    // 读写 App 保存的 Cookie（和 host.fetch 共用同一份）
+    cookie: {
+      get: function(url){ return __h_cookieGet(String(url == null ? '' : url)); },
+      set: function(url, c){ __h_cookieSet(String(url == null ? '' : url), String(c == null ? '' : c)); },
+      remove: function(url){ __h_cookieRemove(String(url == null ? '' : url)); }
+    },
     log: function(){
       var parts = [];
       for (var i = 0; i < arguments.length; i++) {

@@ -3,7 +3,9 @@ package com.example.mediahub.engine
 import com.dokar.quickjs.QuickJs
 import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.evaluate
+import com.example.mediahub.net.CookieStore
 import com.example.mediahub.util.AppLog
+import com.example.mediahub.util.JsAssets
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -47,7 +49,11 @@ class JsModuleEngine(
         q.function("__h_dramaId") { a -> bridge.dramaId(a.str(0)) }
         q.function("__h_chapterId") { a -> bridge.chapterId(a.str(0), a.str(1)) }
         q.function("__h_log") { a -> bridge.log(a.str(0)); null }
+        q.function("__h_cookieGet") { a -> CookieStore.header(a.str(0)) }
+        q.function("__h_cookieSet") { a -> CookieStore.set(a.str(0), a.str(1)); null }
+        q.function("__h_cookieRemove") { a -> CookieStore.remove(a.str(0)); null }
 
+        q.evaluate<Any?>(JsAssets.polyfill, "polyfill.js")
         q.evaluate<Any?>(HostPrelude.build(JsonPrimitive(sourceId).toString()), "prelude.js")
         q.evaluate<Any?>(File(moduleDir, "main.js").readText(), "main.js")
         q.evaluate<Any?>(HostPrelude.CAPTURE, "capture.js")
@@ -71,10 +77,10 @@ class JsModuleEngine(
                     val r = withTimeout(timeoutMs) {
                         q.evaluate<Any?>(code, "call_$fn.js")
                         var out = q.evaluate<String>(HostPrelude.READ, "read.js")
-                        // Promise 尚未完成：执行空脚本推动微任务队列，直到有结果
+                        // Promise 尚未完成：执行到期的定时器并推动微任务队列，直到有结果
                         while (out == "\u0002") {
                             delay(5)
-                            q.evaluate<Any?>("0", "tick.js")
+                            q.evaluate<Any?>(TICK, "tick.js")
                             out = q.evaluate<String>(HostPrelude.READ, "read.js")
                         }
                         out
@@ -149,6 +155,8 @@ class JsModuleEngine(
     private fun Array<Any?>.str(i: Int) = getOrNull(i)?.toString() ?: ""
     private fun JsonObject.str(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
 }
+
+private const val TICK = "typeof __runTimers === 'function' ? __runTimers() : 0"
 
 class JsModuleException(msg: String, cause: Throwable? = null) : Exception(msg, cause)
 

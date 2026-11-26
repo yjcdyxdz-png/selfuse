@@ -21,7 +21,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -32,12 +31,14 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
-import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.common.util.UnstableApi
-import androidx.media3.ui.PlayerView
+import com.example.mediahub.data.AppSettings
+import com.example.mediahub.data.VideoPrefs
 import com.example.mediahub.player.PlayerFactory
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 
 @OptIn(UnstableApi::class)
 @kotlin.OptIn(ExperimentalMaterial3Api::class)
@@ -46,15 +47,27 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     val vm: PlayerViewModel = viewModel(key = "p|$ruleId|$sourceId", factory = PlayerViewModel.Factory(ruleId, sourceId, index))
     val ui by vm.ui.collectAsState()
     val ctx = LocalContext.current
+    val app = ctx.applicationContext
     val activity = ctx as? Activity
+    val scope = rememberCoroutineScope()
     val player = remember { PlayerFactory.create(ctx) }
     var fullscreen by remember { mutableStateOf(false) }
     // 视频实际宽高比（宽/高），未知时按 16:9
     var videoRatio by remember { mutableFloatStateOf(16f / 9f) }
+    val prefsFlow = remember { AppSettings.videoPrefs(app) }
+    val prefs by prefsFlow.collectAsState(initial = VideoPrefs())
+    var showSkip by remember { mutableStateOf(false) }
+    var hint by remember { mutableStateOf<String?>(null) }
+    // 竖屏视频（短剧）：上下滑切集
+    val shortDrama = prefs.swipeEpisodes && videoRatio < 0.9f
+
+    LaunchedEffect(vm) {
+        vm.hints.collectLatest { hint = it; delay(2000); hint = null }
+    }
 
     LaunchedEffect(ui.media) {
         val m = ui.media ?: return@LaunchedEffect
-        player.setMediaSource(PlayerFactory.mediaSource(m))
+        player.setMediaSource(PlayerFactory.mediaSource(m, m.headerMap()))
         if (ui.startPos > 0) player.seekTo(ui.startPos)
         player.prepare(); player.playWhenReady = true
     }
@@ -63,6 +76,21 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     val savePos = { if (player.currentMediaItem != null) vm.save(player.currentPosition) }
     LaunchedEffect(player) {
         while (isActive) { delay(5_000); if (player.isPlaying) savePos() }
+    }
+
+    // 跳过片尾：播到「总时长 - 片尾秒数」时直接下一集
+    LaunchedEffect(player) {
+        var firedFor = -1
+        while (isActive) {
+            delay(500)
+            val s = vm.ui.value
+            val out = s.outroMs
+            val d = player.duration
+            if (out > 0 && d > out + 10_000 && player.isPlaying && player.currentPosition >= d - out && firedFor != s.index) {
+                firedFor = s.index
+                if (vm.hasNext()) { vm.hint("已跳过片尾"); vm.next() } else player.pause()
+            }
+        }
     }
 
     DisposableEffect(player) {
@@ -89,7 +117,13 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
         activity?.window?.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         onDispose {
             owner.lifecycle.removeObserver(obs)
-            activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            activity?.window?.let { w ->
+                w.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                // 离开播放页恢复系统亮度
+                val lp = w.attributes
+                lp.screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE
+                w.attributes = lp
+            }
             setFullscreen(activity, false, true)
             savePos()
             player.release()
@@ -99,25 +133,41 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     LaunchedEffect(fullscreen, videoRatio) { setFullscreen(activity, fullscreen, landscape = videoRatio >= 1f) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
 
+    if (showSkip) {
+        SkipDialog(
+            introMs = ui.introMs, outroMs = ui.outroMs,
+            positionMs = player.currentPosition.coerceAtLeast(0L),
+            durationMs = player.duration.coerceAtLeast(0L),
+            onSave = { i, o ->
+                vm.setSkip(i, o)
+                showSkip = false
+                vm.hint(if (i == 0L && o == 0L) "已清除片头片尾设置" else "已保存，本剧所有集生效")
+            },
+            onDismiss = { showSkip = false },
+        )
+    }
+
     val videoBox: @Composable (Modifier) -> Unit = { mod ->
-        Box(mod.background(Color.Black)) {
-            AndroidView(factory = { c ->
-                PlayerView(c).apply {
-                    this.player = player
-                    setShowNextButton(false); setShowPreviousButton(false)
-                    // 按原始比例完整显示，不拉伸、不裁剪
-                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
-                    setFullscreenButtonClickListener { fullscreen = it }
-                }
-            }, modifier = Modifier.fillMaxSize())
-            if (ui.resolving) CircularProgressIndicator(Modifier.align(Alignment.Center))
-            ui.error?.let {
-                Column(Modifier.align(Alignment.Center).padding(16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(it, color = Color.White)
-                    TextButton(onClick = { vm.play(ui.index) }) { Text("重试") }
-                }
-            }
-        }
+        VideoSurface(
+            player = player,
+            modifier = mod,
+            title = ui.chapters.getOrNull(ui.index)?.title.orEmpty(),
+            fullscreen = fullscreen,
+            shortDrama = shortDrama,
+            speed = prefs.speed,
+            longPressSpeed = prefs.longPressSpeed,
+            hasPrev = ui.index > 0,
+            hasNext = ui.index + 1 < ui.chapters.size,
+            busy = ui.resolving,
+            error = ui.error,
+            hint = hint,
+            onRetry = { vm.play(ui.index) },
+            onPrev = { vm.prev() },
+            onNext = { vm.next() },
+            onSpeed = { s -> scope.launch { AppSettings.setVideoSpeed(app, s) } },
+            onSkipSettings = { showSkip = true },
+            onToggleFullscreen = { fullscreen = !fullscreen },
+        )
     }
 
     if (fullscreen) { videoBox(Modifier.fillMaxSize()); return }

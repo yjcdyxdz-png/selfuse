@@ -25,11 +25,17 @@ import com.example.mediahub.App
 import com.example.mediahub.data.Library
 import com.example.mediahub.data.RuleEntity
 import com.example.mediahub.data.ShelfItem
+import com.example.mediahub.data.UpdateTracker
 import com.example.mediahub.novel.*
 import com.example.mediahub.ui.common.Cover
+import com.example.mediahub.util.AppLog
+import com.example.mediahub.util.DiskCache
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
 
 sealed interface NovelDetailState {
     data object Loading : NovelDetailState
@@ -37,17 +43,34 @@ sealed interface NovelDetailState {
     data class Ok(val rule: RuleEntity, val data: BookData) : NovelDetailState
 }
 
-/** 加载（或从缓存取）书籍信息和目录，详情页和阅读页共用 */
+private val bookJson = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+/** 加载书籍信息和目录：内存 → 磁盘 → 网络。详情页和阅读页共用 */
 suspend fun loadBook(ruleId: String, bookUrl: String, force: Boolean = false): Pair<RuleEntity, BookData> {
     val rule = App.instance.db.ruleDao().get(ruleId) ?: error("书源不存在（可能已删除）")
     val k = NovelCache.key(ruleId, bookUrl)
-    if (!force) NovelCache.books[k]?.let { return rule to it }
+    if (!force) {
+        NovelCache.books[k]?.let { return rule to it }
+        val disk = withContext(Dispatchers.IO) {
+            DiskCache.read("book", k)?.let { runCatching { bookJson.decodeFromString(BookData.serializer(), it) }.getOrNull() }
+        }
+        if (disk != null) {
+            NovelCache.books[k] = disk
+            NovelCache.loadedAt[k] = System.currentTimeMillis() - DiskCache.ageMs("book", k)
+            return rule to disk
+        }
+    }
     val web = BookEngines.get(rule)
     val info = web.bookInfo(bookUrl, NovelCache.hits[bookUrl])
     val data = BookData(info, web.toc(info))
     NovelCache.books[k] = data
+    NovelCache.loadedAt[k] = System.currentTimeMillis()
+    App.instance.appScope.launch { DiskCache.write("book", k, bookJson.encodeToString(BookData.serializer(), data)) }
     return rule to data
 }
+
+private fun bookAgeMs(ruleId: String, bookUrl: String): Long =
+    System.currentTimeMillis() - (NovelCache.loadedAt[NovelCache.key(ruleId, bookUrl)] ?: 0L)
 
 class NovelDetailViewModel(private val ruleId: String, private val bookUrl: String) : ViewModel() {
     private val _state = MutableStateFlow<NovelDetailState>(NovelDetailState.Loading)
@@ -55,8 +78,21 @@ class NovelDetailViewModel(private val ruleId: String, private val bookUrl: Stri
     init { load() }
     fun load(force: Boolean = false) = viewModelScope.launch {
         _state.value = NovelDetailState.Loading
-        _state.value = runCatching { loadBook(ruleId, bookUrl, force).let { NovelDetailState.Ok(it.first, it.second) } }
-            .getOrElse { NovelDetailState.Error(it.message ?: it.toString()) }
+        _state.value = runCatching {
+            val (rule, data) = loadBook(ruleId, bookUrl, force)
+            // 用的是缓存且已超过 30 分钟：后台更新目录，看到新章节
+            if (!force && bookAgeMs(ruleId, bookUrl) > 30 * 60 * 1000L) refreshSilently()
+            UpdateTracker.markSeen(Library.key(ruleId, bookUrl), data.chapters.size)
+            NovelDetailState.Ok(rule, data)
+        }.getOrElse { NovelDetailState.Error(it.message ?: it.toString()) }
+    }
+    private fun refreshSilently() = viewModelScope.launch {
+        runCatching { loadBook(ruleId, bookUrl, force = true) }
+            .onSuccess { (r, d) ->
+                UpdateTracker.markSeen(Library.key(ruleId, bookUrl), d.chapters.size)
+                _state.value = NovelDetailState.Ok(r, d)
+            }
+            .onFailure { AppLog.w("Book", "后台更新目录失败，继续使用缓存：${it.message}") }
     }
     class Factory(private val r: String, private val u: String) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")

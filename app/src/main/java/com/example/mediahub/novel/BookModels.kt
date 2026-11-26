@@ -1,8 +1,10 @@
 package com.example.mediahub.novel
 
+import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.*
 import java.io.File
 
+@Serializable
 data class SearchBook(
     val name: String,
     val author: String = "",
@@ -14,6 +16,7 @@ data class SearchBook(
     val wordCount: String = "",
 )
 
+@Serializable
 data class BookInfo(
     val name: String,
     val author: String = "",
@@ -28,8 +31,10 @@ data class BookInfo(
     fun toSearch() = SearchBook(name, author, kind, lastChapter, intro, coverUrl, bookUrl, wordCount)
 }
 
+@Serializable
 data class BookChapter(val index: Int, val title: String, val url: String, val isVip: Boolean = false)
 
+@Serializable
 data class BookData(val info: BookInfo, val chapters: List<BookChapter>)
 
 /** Legado 书源（只读取用到的字段，其余忽略） */
