@@ -1,6 +1,7 @@
 package com.example.mediahub.engine
 
 import com.dokar.quickjs.QuickJs
+import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.evaluate
 import com.example.mediahub.util.AppLog
 import kotlinx.coroutines.*

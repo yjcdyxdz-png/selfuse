@@ -2,6 +2,7 @@ package com.example.mediahub.novel
 
 import android.util.Base64
 import com.dokar.quickjs.QuickJs
+import com.dokar.quickjs.binding.function
 import com.dokar.quickjs.evaluate
 import com.example.mediahub.util.AppLog
 import kotlinx.coroutines.asCoroutineDispatcher
