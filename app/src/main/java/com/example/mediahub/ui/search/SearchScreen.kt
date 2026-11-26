@@ -64,6 +64,7 @@ class SearchViewModel : ViewModel() {
                                 if (rule.kind == RuleKind.LEGADO_BOOK) BookEngines.get(rule).search(key).map { it.toHit(rule) }
                                 else EngineManager.get(rule).search(1, key).items.map { it.toHit(rule) }
                             }
+                        }.onSuccess { AppLog.i("Search", "${rule.name} 搜索「$key」返回 ${it.size} 条") }
                         }.onFailure { AppLog.e("Search", "${rule.name} 搜索失败: ${it.message}") }
                         _ui.update { u ->
                             u.copy(hits = u.hits + r.getOrDefault(emptyList()), done = u.done + 1,

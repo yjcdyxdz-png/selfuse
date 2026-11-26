@@ -28,6 +28,8 @@ class LegadoJs(
     private val tag: String,
     private val vars: MutableMap<String, String>,
     private val ajax: (String) -> String,
+    /** 书源的 jsLib：一段 JS 代码，或 {"名称": "url"} 形式的 JSON（按 url 下载） */
+    private val jsLib: String = "",
 ) : AutoCloseable {
     private val executor = Executors.newSingleThreadExecutor { Thread(it, "legado-js") }
     private val dispatcher = executor.asCoroutineDispatcher()
@@ -48,8 +50,30 @@ class LegadoJs(
         q.function("__j_get") { a -> vars[a.s(0)] ?: "" }
         q.function("__j_log") { a -> AppLog.i("BookJs:$tag", a.s(0)); null }
         q.evaluate<Any?>(PRELUDE)
+        loadJsLib(q)
         qjs = q
         return q
+    }
+
+    /** 在全局作用域执行 jsLib，其中定义的函数可被所有 @js 规则调用 */
+    private suspend fun loadJsLib(q: QuickJs) {
+        val lib = jsLib.trim()
+        if (lib.isEmpty()) return
+        val codes = mutableListOf<String>()
+        val asMap = if (lib.startsWith("{")) runCatching { JSONValue.parseWithException(lib) as? Map<*, *> }.getOrNull() else null
+        if (asMap != null) {
+            asMap.forEach { (k, v) ->
+                val u = v?.toString().orEmpty()
+                if (u.startsWith("http")) runCatching { codes += ajax(u) }
+                    .onFailure { AppLog.e("BookJs:$tag", "jsLib $k 下载失败", it) }
+                else codes += u
+            }
+        } else codes += lib
+        for (c in codes) {
+            runCatching { q.evaluate<Any?>("(0, eval)(" + JsonPrimitive(c).toString() + "); 0;", "jsLib.js") }
+                .onSuccess { AppLog.i("BookJs:$tag", "jsLib 已加载 ${c.length} 字符") }
+                .onFailure { AppLog.e("BookJs:$tag", "jsLib 执行失败: ${it.message}", it) }
+        }
     }
 
     /** 执行代码，最后一个表达式的值为结果：字符串，或 Map / List（JS 对象/数组） */

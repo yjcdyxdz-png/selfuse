@@ -113,12 +113,13 @@ class JsModuleEngine(
     suspend fun validCategory(c: Category): Boolean {
         ensureLoaded()
         if (!hasFunction("validCategory")) return true
-        val r = callRaw("validCategory", c.extra ?: JsonPrimitive(c.id))
+        val r = callRaw("validCategory", JsonPrimitive(c.id))
         return (r as? JsonPrimitive)?.booleanOrNull ?: (r !is JsonNull)
     }
 
     suspend fun catalogPage(page: Int, category: Category?): PageResult =
-        call("catalogPage", JsonPrimitive(page), category?.extra ?: category?.id?.let(::JsonPrimitive) ?: JsonNull)
+        // 传分类 id 字符串：模块常用 String(cat) 或 CATS[cat] 查表，传对象会变成 "[object Object]"
+        call("catalogPage", JsonPrimitive(page), category?.id?.let(::JsonPrimitive) ?: JsonNull)
 
     suspend fun search(page: Int, keyword: String): PageResult =
         call("search", JsonPrimitive(page), JsonPrimitive(keyword))

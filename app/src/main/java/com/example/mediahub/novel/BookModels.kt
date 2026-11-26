@@ -39,6 +39,8 @@ class BookSource(val json: JsonObject) {
     val header = str("header")
     val searchUrl = str("searchUrl")
     val exploreUrl = str("exploreUrl")
+    /** 书源共享 JS 函数库（Legado 的 jsLib 字段），所有 @js 执行前先加载 */
+    val jsLib = str("jsLib")
     val ruleSearch = obj("ruleSearch")
     val ruleExplore = obj("ruleExplore")
     val ruleBookInfo = obj("ruleBookInfo")

@@ -13,9 +13,9 @@ import java.util.concurrent.ConcurrentHashMap
 /** 按“搜索 → 书籍信息 → 目录 → 正文”流程执行一个书源 */
 class WebBook(val source: BookSource) : AutoCloseable {
     private val vars = ConcurrentHashMap<String, String>()
-    private val js = LegadoJs(source.name.ifBlank { source.url }, vars) { url ->
+    private val js = LegadoJs(source.name.ifBlank { source.url }, vars, ajax = { url ->
         runBlocking { AnalyzeUrl.fetch(AnalyzeUrl(source, null).build(url)).body }
-    }
+    }, jsLib = source.jsLib)
     private val urls = AnalyzeUrl(source, js)
 
     /** 书籍信息页的响应，目录地址相同时直接复用 */

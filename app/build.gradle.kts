@@ -14,8 +14,10 @@ android {
         applicationId = "com.example.mediahub"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // 版本号随 GitHub Actions 运行序号递增，保证每次都能覆盖更新
+        val build = System.getenv("BUILD_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
     }
 
     // 签名信息全部来自环境变量（GitHub Secrets 注入），未配置时 release 不签名

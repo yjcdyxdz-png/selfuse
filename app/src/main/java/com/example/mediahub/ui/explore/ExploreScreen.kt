@@ -102,11 +102,14 @@ class ExploreViewModel : ViewModel() {
                     r.items.map { it.toHit(rule) } to r.hasMore
                 }
             }.onSuccess { (list, more) ->
+                com.example.mediahub.util.AppLog.i("Explore", "${rule.name} 分类=${s.kind?.name} 第${page}页 返回 ${list.size} 条, hasMore=$more, ids=" +
+                    list.take(5).joinToString { it.id.take(40) })
                 _ui.update { u ->
                     // 用 id+标题去重：模块返回的 id 可能为空或重复，只按 id 会把整页合并成一条
                     val seen = u.items.map { it.id + "\u0000" + it.title }.toHashSet()
                     val fresh = list.filter { seen.add(it.id + "\u0000" + it.title) }
                     // 书源无法判断是否还有下一页：本页没有新条目即停止
+                    com.example.mediahub.util.AppLog.i("Explore", "去重后新增 ${fresh.size} 条，累计 ${u.items.size + fresh.size} 条")
                     u.copy(items = u.items + fresh, page = page, hasMore = more && fresh.isNotEmpty(), loading = false)
                 }
             }.onFailure { e ->
