@@ -18,6 +18,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -30,6 +31,8 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.ui.PlayerView
 import com.example.mediahub.player.PlayerFactory
@@ -46,6 +49,8 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     val activity = ctx as? Activity
     val player = remember { PlayerFactory.create(ctx) }
     var fullscreen by remember { mutableStateOf(false) }
+    // 视频实际宽高比（宽/高），未知时按 16:9
+    var videoRatio by remember { mutableFloatStateOf(16f / 9f) }
 
     LaunchedEffect(ui.media) {
         val m = ui.media ?: return@LaunchedEffect
@@ -65,6 +70,10 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED && vm.hasNext()) vm.next()
             }
+            override fun onVideoSizeChanged(size: VideoSize) {
+                if (size.width > 0 && size.height > 0)
+                    videoRatio = size.width * size.pixelWidthHeightRatio / size.height
+            }
             override fun onPlayerError(error: PlaybackException) {
                 vm.reportError("播放出错：${error.errorCodeName} ${error.cause?.message ?: ""}")
             }
@@ -81,12 +90,13 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
         onDispose {
             owner.lifecycle.removeObserver(obs)
             activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-            setFullscreen(activity, false)
+            setFullscreen(activity, false, true)
             savePos()
             player.release()
         }
     }
-    LaunchedEffect(fullscreen) { setFullscreen(activity, fullscreen) }
+    // 竖屏视频（短剧）全屏时保持竖屏，横屏视频才切到横屏
+    LaunchedEffect(fullscreen, videoRatio) { setFullscreen(activity, fullscreen, landscape = videoRatio >= 1f) }
     BackHandler(enabled = fullscreen) { fullscreen = false }
 
     val videoBox: @Composable (Modifier) -> Unit = { mod ->
@@ -95,6 +105,8 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
                 PlayerView(c).apply {
                     this.player = player
                     setShowNextButton(false); setShowPreviousButton(false)
+                    // 按原始比例完整显示，不拉伸、不裁剪
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
                     setFullscreenButtonClickListener { fullscreen = it }
                 }
             }, modifier = Modifier.fillMaxSize())
@@ -115,7 +127,12 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
             navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
-            videoBox(Modifier.fillMaxWidth().aspectRatio(16f / 9f))
+            // 播放区域跟随视频比例：横屏视频占满宽度；竖屏视频最高占屏幕 60%，两侧留黑边
+            BoxWithConstraints(Modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
+                val maxH = LocalConfiguration.current.screenHeightDp.dp * 0.6f
+                val h = (maxWidth / videoRatio).coerceAtMost(maxH)
+                videoBox(Modifier.height(h).aspectRatio(videoRatio, matchHeightConstraintsFirst = true))
+            }
             Text(ui.chapters.getOrNull(ui.index)?.title ?: "", Modifier.padding(12.dp),
                 style = MaterialTheme.typography.titleSmall)
             val listState = rememberLazyListState()
@@ -138,11 +155,12 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     }
 }
 
-private fun setFullscreen(activity: Activity?, on: Boolean) {
+private fun setFullscreen(activity: Activity?, on: Boolean, landscape: Boolean) {
     activity ?: return
     val ctl = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
     if (on) {
-        activity.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+        activity.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE
+            else ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
         ctl.hide(WindowInsetsCompat.Type.systemBars())
         ctl.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     } else {

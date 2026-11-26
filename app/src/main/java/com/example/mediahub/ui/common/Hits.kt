@@ -29,7 +29,8 @@ data class Hit(
     val author: String = "",
 )
 
-fun MediaItem.toHit(rule: RuleEntity) = Hit(rule, sourceId.ifBlank { url }, title, cover, description)
+fun MediaItem.toHit(rule: RuleEntity) =
+    Hit(rule, sourceId.ifBlank { url }.ifBlank { id }.ifBlank { title }, title, cover, description)
 
 fun SearchBook.toHit(rule: RuleEntity): Hit {
     NovelCache.hits[bookUrl] = this

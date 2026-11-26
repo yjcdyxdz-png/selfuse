@@ -14,7 +14,8 @@
 -dontwarn org.codehaus.jettison.**
 -dontwarn org.jspecify.**
 -keepattributes *Annotation*, Signature, InnerClasses
-# Jayway JsonPath 的可选 JSON 提供者（本项目只用默认的 json-smart）
+
+# Jayway JsonPath 的可选 JSON 提供者（本项目只用默认的 json-smart，不需要这些库）
 -dontwarn com.google.gson.**
 -dontwarn org.apache.tapestry5.json.**
 -dontwarn jakarta.json.**

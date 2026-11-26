@@ -21,6 +21,7 @@ import com.example.mediahub.novel.BookEngines
 import com.example.mediahub.ui.common.Hit
 import com.example.mediahub.ui.common.HitCard
 import com.example.mediahub.ui.common.toHit
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -73,13 +74,14 @@ class ExploreViewModel : ViewModel() {
                 if (kinds.isNotEmpty()) selectKind(kinds.first())
                 else if (rule.kind == RuleKind.JS_MODULE) selectKind(null)
                 else _ui.update { it.copy(error = "该书源没有发现分类") }
-            }.onFailure { e -> _ui.update { it.copy(loading = false, error = e.message) } }
+            }.onFailure { e -> if (e !is CancellationException) _ui.update { it.copy(loading = false, error = e.message) } }
         }
     }
 
     fun selectKind(k: Kind?) {
         job?.cancel()
-        _ui.update { it.copy(kind = k, items = emptyList(), page = 0, hasMore = true, error = null) }
+        // 取消了正在进行的加载，loading 要一起复位，否则 loadMore 会直接返回
+        _ui.update { it.copy(kind = k, items = emptyList(), page = 0, hasMore = true, loading = false, error = null) }
         loadMore()
     }
 
@@ -101,12 +103,17 @@ class ExploreViewModel : ViewModel() {
                 }
             }.onSuccess { (list, more) ->
                 _ui.update { u ->
-                    val seen = u.items.map { it.id }.toHashSet()
-                    val fresh = list.filter { seen.add(it.id) }
+                    // 用 id+标题去重：模块返回的 id 可能为空或重复，只按 id 会把整页合并成一条
+                    val seen = u.items.map { it.id + "\u0000" + it.title }.toHashSet()
+                    val fresh = list.filter { seen.add(it.id + "\u0000" + it.title) }
                     // 书源无法判断是否还有下一页：本页没有新条目即停止
                     u.copy(items = u.items + fresh, page = page, hasMore = more && fresh.isNotEmpty(), loading = false)
                 }
-            }.onFailure { e -> _ui.update { it.copy(loading = false, hasMore = false, error = e.message) } }
+            }.onFailure { e ->
+                // 被取消（切换规则/分类）不算失败，不能把 hasMore 置为 false
+                if (e is CancellationException) return@onFailure
+                _ui.update { it.copy(loading = false, hasMore = false, error = e.message) }
+            }
         }
     }
 }
@@ -143,7 +150,7 @@ fun ExploreScreen(onOpen: (Hit) -> Unit, vm: ExploreViewModel = viewModel()) {
         ui.error?.let { Text(it, Modifier.padding(12.dp), color = MaterialTheme.colorScheme.error) }
         LazyVerticalGrid(GridCells.Adaptive(104.dp), state = grid, contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            items(ui.items, key = { it.id }) { h -> HitCard(h) { onOpen(h) } }
+            itemsIndexed(ui.items, key = { i, h -> "$i|${h.id}" }) { _, h -> HitCard(h) { onOpen(h) } }
         }
     }
 }

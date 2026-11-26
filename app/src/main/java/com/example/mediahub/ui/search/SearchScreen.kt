@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -103,7 +104,7 @@ fun SearchScreen(onOpen: (Hit) -> Unit, vm: SearchViewModel = viewModel()) {
         if (ui.total == 0 && !ui.running) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("输入关键词搜索", style = MaterialTheme.typography.bodyMedium)
         } else LazyColumn(Modifier.fillMaxSize()) {
-            items(shown, key = { it.rule.id + "|" + it.id }) { h -> HitRow(h) { onOpen(h) } }
+            itemsIndexed(shown, key = { i, h -> "$i|${h.rule.id}|${h.id}" }) { _, h -> HitRow(h) { onOpen(h) } }
         }
     }
 }

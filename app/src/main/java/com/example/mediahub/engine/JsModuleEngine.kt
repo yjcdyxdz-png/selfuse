@@ -82,6 +82,7 @@ class JsModuleEngine(
                     if (r.startsWith("\u0001")) throw JsModuleException(r.substring(1))
                     json.parseToJsonElement(r)
                 } catch (t: Throwable) {
+                    if (t is CancellationException && t !is TimeoutCancellationException) throw t
                     AppLog.e("Engine", "$sourceId.$fn 失败: ${t.message}", t)
                     throw JsModuleException("$fn: ${t.message}", t)
                 }
