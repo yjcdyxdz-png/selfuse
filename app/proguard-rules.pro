@@ -14,3 +14,19 @@
 -dontwarn org.codehaus.jettison.**
 -dontwarn org.jspecify.**
 -keepattributes *Annotation*, Signature, InnerClasses
+# JsonPath 的可选 JSON 提供者
+-dontwarn com.google.gson.**
+-dontwarn org.apache.tapestry5.json.**
+-dontwarn com.fasterxml.jackson.**
+-dontwarn jakarta.json.**
+-dontwarn javax.json.**
+-dontwarn org.codehaus.jettison.**
+-dontwarn org.json.**
+-dontwarn com.jayway.jsonpath.spi.json.**
+-dontwarn com.jayway.jsonpath.spi.mapper.**
+# JsoupXpath / json-smart 的其他可选依赖
+-dontwarn org.apache.commons.**
+-dontwarn net.minidev.asm.**
+-dontwarn java.beans.**
+-dontwarn javax.script.**
+-dontwarn org.jetbrains.annotations.**
