@@ -26,7 +26,7 @@ import java.util.zip.ZipOutputStream
  *   rules.json                  规则列表；rules/modules/<id>/…  rules/booksources/<id>.json  规则文件
  *   shelf.json  progress.json   书架和阅读进度
  *   settings/app.json  settings/reader.json      App 设置和阅读器设置
- *   prefs/*.json                规则检测结果、片头片尾、更新记录、Cookie（可选）
+ *   prefs/<名称>.json                规则检测结果、片头片尾、更新记录、Cookie（可选）
  * 不包含缓存。恢复是合并：同一个规则 / 作品以备份为准，本机多出来的不删除，阅读进度保留较新的。
  */
 object BackupManager {
