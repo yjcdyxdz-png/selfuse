@@ -10,4 +10,7 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+-dontwarn com.fasterxml.jackson.**
+-dontwarn org.codehaus.jettison.**
+-dontwarn org.jspecify.**
 -keepattributes *Annotation*, Signature, InnerClasses
