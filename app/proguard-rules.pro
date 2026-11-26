@@ -1,0 +1,13 @@
+-keep class com.example.mediahub.** { *; }
+-keep class com.dokar.quickjs.** { *; }
+-keep class org.jsoup.** { *; }
+-keep class org.seimicrawler.xpath.** { *; }
+-keep class com.jayway.jsonpath.** { *; }
+-keep class net.minidev.** { *; }
+-dontwarn org.slf4j.**
+-dontwarn org.antlr.**
+-dontwarn javax.annotation.**
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+-keepattributes *Annotation*, Signature, InnerClasses
