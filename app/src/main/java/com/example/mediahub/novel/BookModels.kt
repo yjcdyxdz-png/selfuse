@@ -46,6 +46,8 @@ class BookSource(val json: JsonObject) {
     val exploreUrl = str("exploreUrl")
     /** 书源共享 JS 函数库（Legado 的 jsLib 字段），所有 @js 执行前先加载 */
     val jsLib = str("jsLib")
+    /** Legado 的 enabledCookieJar：false 时这个书源的请求不带、也不保存 Cookie（默认 true） */
+    val enabledCookieJar: Boolean = (json["enabledCookieJar"] as? JsonPrimitive)?.booleanOrNull ?: true
     val ruleSearch = obj("ruleSearch")
     val ruleExplore = obj("ruleExplore")
     val ruleBookInfo = obj("ruleBookInfo")

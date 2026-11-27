@@ -29,6 +29,8 @@ class AnalyzeRule(
     private val page: Int = 1,
 ) {
     var content: Any? = null
+    /** 最近一次规则出错的原因（规则出错时返回空结果，原因记在这里） */
+    var lastError: String? = null
 
     private enum class Mode { CSS, XPATH, JSON, JSOUP }
 
@@ -55,7 +57,7 @@ class AnalyzeRule(
             }
             res
         } catch (t: Throwable) {
-            AppLog.e("Rule", "规则出错: $rule", t); emptyList()
+            AppLog.e("Rule", "规则出错: $rule", t); lastError = t.message ?: t.toString(); emptyList()
         }
         return if (isUrl) out.filter { it.isNotBlank() }.map { resolveUrl(it.trim(), baseUrl) } else out
     }
@@ -78,7 +80,7 @@ class AnalyzeRule(
             }
             res
         } catch (t: Throwable) {
-            AppLog.e("Rule", "列表规则出错: $rule", t); emptyList()
+            AppLog.e("Rule", "列表规则出错: $rule", t); lastError = t.message ?: t.toString(); emptyList()
         }
         return if (reverse) out.reversed() else out
     }

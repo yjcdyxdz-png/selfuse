@@ -17,6 +17,8 @@ data class UrlRequest(
     val headers: Map<String, String>,
     val charset: String?,
     val isJsonBody: Boolean,
+    /** 书源关闭 CookieJar 时为 false：不带、也不保存 Cookie */
+    val useCookies: Boolean = true,
 )
 
 data class StrResponse(val url: String, val body: String, val code: Int)
@@ -66,7 +68,7 @@ class AnalyzeUrl(private val source: BookSource, private val js: LegadoJs?) {
             if (!isJson) s = encodePairs(s, charset)
             body = s
         }
-        return UrlRequest(url, method, body, headers, charset, isJson)
+        return UrlRequest(url, method, body, headers, charset, isJson, useCookies = source.enabledCookieJar)
     }
 
     private suspend fun sourceHeaders(binds: Map<String, Any?>): Map<String, String> {
@@ -117,7 +119,8 @@ class AnalyzeUrl(private val source: BookSource, private val js: LegadoJs?) {
                 b.post((req.body ?: "").toByteArray(Charsets.UTF_8).toRequestBody(ct.toMediaTypeOrNull()))
             }
             AppLog.i("Book", "${req.method} ${req.url}" + (req.body?.let { " body=${it.take(200)}" } ?: ""))
-            EngineManager.http.newCall(b.build()).execute().use { r ->
+            val client = if (req.useCookies) EngineManager.http else EngineManager.httpNoCookies
+            client.newCall(b.build()).execute().use { r ->
                 val ct = r.body?.contentType()
                 val bytes = r.body?.bytes() ?: ByteArray(0)
                 val cs = req.charset?.let { runCatching { Charset.forName(it) }.getOrNull() }

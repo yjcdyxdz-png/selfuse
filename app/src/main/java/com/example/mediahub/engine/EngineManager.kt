@@ -41,6 +41,9 @@ object EngineManager {
         })
         .build()
 
+    /** 不带、也不保存 Cookie（书源 enabledCookieJar=false 时用）；共用连接池 */
+    val httpNoCookies: OkHttpClient by lazy { http.newBuilder().cookieJar(okhttp3.CookieJar.NO_COOKIES).build() }
+
     private val engines = ConcurrentHashMap<String, JsModuleEngine>()
 
     fun get(rule: RuleEntity): JsModuleEngine {

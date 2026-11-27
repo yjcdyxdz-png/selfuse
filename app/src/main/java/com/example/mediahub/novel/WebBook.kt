@@ -152,14 +152,19 @@ class WebBook(val source: BookSource) : AutoCloseable {
         val seen = mutableSetOf<String>()
         val nextBase = nextChapterUrl?.let { UrlOptions.split(it).first }
         var url: String? = ch.url
+        var err: String? = null
         while (url != null && seen.size < 30 && seen.add(url)) {
             val resp = get(url)
             val ar = rule(resp.url).apply { content = resp.body }
             parts += ar.getString(rule)
+            if (err == null) err = ar.lastError
             url = ar.getStringList(r["nextContentUrl"], isUrl = true)
                 .firstOrNull { UrlOptions.split(it).first != nextBase && it !in seen }
         }
-        return formatContent(parts.joinToString("\n"), r["replaceRegex"])
+        val text = formatContent(parts.joinToString("\n"), r["replaceRegex"])
+        // 正文为空（被网站拦截、规则出错）：报错让用户重试，也不会被缓存
+        if (text.isBlank()) error(err?.substringAfterLast("Error: ")?.lineSequence()?.firstOrNull()?.take(200) ?: "没有取到正文")
+        return text
     }
 
     private suspend fun formatContent(raw: String, replaceRegex: String?): String {
@@ -196,6 +201,9 @@ object BookEngines {
 }
 
 /** 缓存：搜索结果（内存）、书籍信息+目录和正文（内存 + 磁盘） */
+/** v16 起换了正文缓存目录：之前被网站截断的章节不再使用 */
+private const val CONTENT_NS = "content2"
+
 object NovelCache {
     val hits = ConcurrentHashMap<String, SearchBook>()
     val books = ConcurrentHashMap<String, BookData>()
@@ -210,7 +218,7 @@ object NovelCache {
     suspend fun content(k: String, chapterUrl: String): String? {
         val ck = "$k#$chapterUrl"
         synchronized(contents) { contents[ck] }?.let { return it }
-        val s = withContext(Dispatchers.IO) { DiskCache.read("content", ck) } ?: return null
+        val s = withContext(Dispatchers.IO) { DiskCache.read(CONTENT_NS, ck) } ?: return null
         synchronized(contents) { contents[ck] = s }
         return s
     }
@@ -219,7 +227,7 @@ object NovelCache {
         if (s.isBlank()) return
         val ck = "$k#$chapterUrl"
         synchronized(contents) { contents[ck] = s }
-        App.instance.appScope.launch { DiskCache.write("content", ck, s) }
+        App.instance.appScope.launch { DiskCache.write(CONTENT_NS, ck, s) }
     }
 
     fun clearMemory() {
