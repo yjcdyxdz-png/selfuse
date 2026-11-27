@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MediaHub 投屏</title>
+<style>
+  html,body{margin:0;height:100%;background:#000;color:#ddd;font-family:system-ui,"Microsoft YaHei",sans-serif;overflow:hidden}
+  video{width:100%;height:100%;display:block;background:#000}
+  #bar{position:fixed;top:0;left:0;right:0;padding:12px 18px;background:linear-gradient(#000c,#0000);z-index:2;
+       transition:opacity .4s;pointer-events:none;font-size:15px}
+  #bar.hide{opacity:0}
+  #title{font-weight:600;color:#fff}
+  #st{margin-left:10px;color:#9aa}
+  #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+       font-size:18px;gap:10px;pointer-events:none;text-align:center;padding:24px}
+  #msg small{color:#889;font-size:13px}
+</style>
+</head>
+<body>
+<div id="bar"><span id="title">MediaHub 投屏</span><span id="st"></span></div>
+<video id="v" controls autoplay playsinline></video>
+<div id="msg"><div id="mt">正在连接手机…</div><small>快捷键：空格 暂停 · ← → 快退快进 10 秒 · F 全屏</small></div>
+<script src="/hls.min.js"></script>
+<script>
+if (!window.Hls) document.write('<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"><\/script>');
+</script>
+<script>
+(function () {
+  var v = document.getElementById('v'), bar = document.getElementById('bar');
+  var titleEl = document.getElementById('title'), stEl = document.getElementById('st');
+  var msg = document.getElementById('msg'), mt = document.getElementById('mt');
+  var cur = null, hls = null, cmdSeq = -1, pendingStart = 0, ended = false, lastErr = '', hideTimer = 0;
+
+  function show(t) { mt.textContent = t || ''; msg.style.display = t ? 'flex' : 'none'; }
+  function setErr(t) { lastErr = t || ''; if (t) show(t); }
+
+  function destroy() {
+    if (hls) { try { hls.destroy(); } catch (e) {} hls = null; }
+    v.removeAttribute('src'); try { v.load(); } catch (e) {}
+  }
+
+  function load(m) {
+    cur = m; ended = false; lastErr = '';
+    titleEl.textContent = m.title; document.title = m.title + ' - MediaHub 投屏';
+    show('加载中…');
+    destroy();
+    pendingStart = m.start || 0;
+    if (m.hls && window.Hls && Hls.isSupported()) {
+      hls = new Hls({ maxBufferLength: 60, enableWorker: true });
+      hls.on(Hls.Events.ERROR, function (e, d) {
+        if (!d.fatal) return;
+        if (d.type === Hls.ErrorTypes.NETWORK_ERROR) { stEl.textContent = '（网络错误，重试中）'; hls.startLoad(); }
+        else if (d.type === Hls.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); }
+        else setErr('播放出错：' + d.details);
+      });
+      hls.loadSource(m.url);
+      hls.attachMedia(v);
+    } else {
+      v.src = m.url;
+    }
+    var p = v.play(); if (p && p.catch) p.catch(function () { show('点一下画面开始播放'); });
+  }
+
+  v.addEventListener('loadedmetadata', function () {
+    if (pendingStart > 1 && (!isFinite(v.duration) || pendingStart < v.duration - 5)) v.currentTime = pendingStart;
+    pendingStart = 0;
+  });
+  v.addEventListener('playing', function () { if (!lastErr) show(''); stEl.textContent = ''; });
+  v.addEventListener('waiting', function () { stEl.textContent = '（缓冲中）'; });
+  v.addEventListener('ended', function () { ended = true; show('本集播完了'); });
+  v.addEventListener('error', function () { if (!hls) setErr('无法播放这个视频（浏览器不支持这种格式）'); });
+  document.addEventListener('click', function () { if (v.paused && cur) v.play(); });
+
+  function applyCmd(c) {
+    if (c.action === 'pause') v.pause();
+    else if (c.action === 'play') v.play();
+    else if (c.action === 'seek') v.currentTime = (c.value || 0) / 1000;
+  }
+
+  function poll() {
+    fetch('/api/state', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (s) {
+      if (!s.media) {
+        if (cur) { destroy(); cur = null; titleEl.textContent = 'MediaHub 投屏'; }
+        show(s.active ? '等待手机选择要播放的视频…' : '手机没有在投屏到浏览器（可以关闭这个页面）');
+      } else if (!cur || cur.id !== s.media.id) {
+        load(s.media);
+      }
+      if (s.cmd) {
+        if (cmdSeq >= 0 && s.cmd.seq !== cmdSeq) applyCmd(s.cmd);
+        cmdSeq = s.cmd.seq;
+      } else if (cmdSeq < 0) cmdSeq = 0;
+      if (stEl.textContent.indexOf('连接') >= 0) stEl.textContent = '';
+    }).catch(function () {
+      stEl.textContent = '（和手机的连接中断，正在重试）';
+    }).then(function () { setTimeout(poll, 1000); });
+  }
+
+  function report() {
+    if (cur) {
+      var q = 'mid=' + cur.id + '&pos=' + Math.floor((v.currentTime || 0) * 1000) +
+        '&dur=' + (isFinite(v.duration) ? Math.floor(v.duration * 1000) : 0) +
+        '&playing=' + (v.paused ? 0 : 1) + (ended ? '&ended=1' : '') +
+        (lastErr ? '&err=' + encodeURIComponent(lastErr) : '');
+      fetch('/api/report?' + q, { cache: 'no-store' }).catch(function () {});
+    } else {
+      fetch('/api/report', { cache: 'no-store' }).catch(function () {});
+    }
+  }
+
+  document.addEventListener('keydown', function (e) {
+    if (e.key === ' ') { e.preventDefault(); v.paused ? v.play() : v.pause(); }
+    else if (e.key === 'ArrowLeft') v.currentTime = Math.max(0, v.currentTime - 10);
+    else if (e.key === 'ArrowRight') v.currentTime = v.currentTime + 10;
+    else if (e.key === 'f' || e.key === 'F') {
+      if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen();
+    }
+  });
+  document.addEventListener('mousemove', function () {
+    bar.classList.remove('hide'); clearTimeout(hideTimer);
+    hideTimer = setTimeout(function () { bar.classList.add('hide'); }, 2500);
+  });
+
+  poll();
+  setInterval(report, 1000);
+})();
+</script>
+</body>
+</html>

@@ -12,6 +12,8 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Cast
+import androidx.compose.material.icons.filled.CastConnected
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -32,7 +34,10 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
+import com.example.mediahub.cast.CastController
+import com.example.mediahub.cast.CastEvent
 import com.example.mediahub.data.AppSettings
+import com.example.mediahub.engine.MediaUrl
 import com.example.mediahub.data.VideoPrefs
 import com.example.mediahub.player.PlayerFactory
 import kotlinx.coroutines.delay
@@ -60,22 +65,59 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     var hint by remember { mutableStateOf<String?>(null) }
     // 竖屏视频（短剧）：上下滑切集
     val shortDrama = prefs.swipeEpisodes && videoRatio < 0.9f
+    // ---- 投屏 ----
+    val cast by CastController.state.collectAsState()
+    val casting = cast.target != null
+    var showCast by remember { mutableStateOf(false) }
+    // 手机播放器里当前装着的视频
+    var localMedia by remember { mutableStateOf<MediaUrl?>(null) }
+    val episodeTitle = ui.chapters.getOrNull(ui.index)?.title?.ifBlank { null } ?: "第${ui.index + 1}集"
+    val castTitle = listOf(ui.title, episodeTitle).filter { it.isNotBlank() }.joinToString(" ")
 
     LaunchedEffect(vm) {
         vm.hints.collectLatest { hint = it; delay(2000); hint = null }
     }
 
-    LaunchedEffect(ui.media) {
+    // 换集或开始/停止投屏时：投屏中就把视频发给投屏端，否则在手机上播放
+    LaunchedEffect(ui.media, casting) {
         val m = ui.media ?: return@LaunchedEffect
-        player.setMediaSource(PlayerFactory.mediaSource(m, m.headerMap()))
-        if (ui.startPos > 0) player.seekTo(ui.startPos)
-        player.prepare(); player.playWhenReady = true
+        if (casting) {
+            // 正在手机上看的视频接着当前位置投；新的一集从断点 / 片头之后开始
+            val start = if (localMedia === m && player.currentMediaItem != null) player.currentPosition else ui.startPos
+            player.pause()
+            CastController.load(m, castTitle, start)
+        } else {
+            val resume = CastController.takeResumePosition(m.url)
+            if (localMedia !== m) {
+                player.setMediaSource(PlayerFactory.mediaSource(m, m.headerMap()))
+                val start = resume ?: ui.startPos
+                if (start > 0) player.seekTo(start)
+                player.prepare()
+                localMedia = m
+            } else if (resume != null) {
+                player.seekTo(resume)
+            }
+            player.playWhenReady = true
+        }
+    }
+    // 开始投屏时退出全屏
+    LaunchedEffect(casting) { if (casting) fullscreen = false }
+    // 投屏端播完一集：自动下一集
+    LaunchedEffect(vm) {
+        CastController.events.collect { e ->
+            if (e is CastEvent.Ended && CastController.active && vm.hasNext()) vm.next()
+        }
     }
 
-    // 断点续看：每 5 秒记录一次位置，暂停/离开页面时也记录
-    val savePos = { if (player.currentMediaItem != null) vm.save(player.currentPosition) }
+    // 断点续看：每 5 秒记录一次位置，暂停/离开页面时也记录（投屏时记录投屏端的位置）
+    val savePos = {
+        val c = CastController.state.value
+        if (c.target != null) { if (c.media != null && c.positionMs > 0) vm.save(c.positionMs) }
+        else if (player.currentMediaItem != null) vm.save(player.currentPosition)
+        Unit
+    }
     LaunchedEffect(player) {
-        while (isActive) { delay(5_000); if (player.isPlaying) savePos() }
+        while (isActive) { delay(5_000); if (player.isPlaying || CastController.state.value.playing) savePos() }
     }
 
     // 跳过片尾：播到「总时长 - 片尾秒数」时直接下一集
@@ -85,10 +127,15 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
             delay(500)
             val s = vm.ui.value
             val out = s.outroMs
-            val d = player.duration
-            if (out > 0 && d > out + 10_000 && player.isPlaying && player.currentPosition >= d - out && firedFor != s.index) {
+            val c = CastController.state.value
+            val onCast = c.target != null
+            val d = if (onCast) c.durationMs else player.duration
+            val pos = if (onCast) c.positionMs else player.currentPosition
+            val playing = if (onCast) c.playing else player.isPlaying
+            if (out > 0 && d > out + 10_000 && playing && pos >= d - out && firedFor != s.index) {
                 firedFor = s.index
-                if (vm.hasNext()) { vm.hint("已跳过片尾"); vm.next() } else player.pause()
+                if (vm.hasNext()) { vm.hint("已跳过片尾"); vm.next() }
+                else if (onCast) CastController.togglePlay() else player.pause()
             }
         }
     }
@@ -96,7 +143,7 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
     DisposableEffect(player) {
         val l = object : Player.Listener {
             override fun onPlaybackStateChanged(state: Int) {
-                if (state == Player.STATE_ENDED && vm.hasNext()) vm.next()
+                if (state == Player.STATE_ENDED && !CastController.active && vm.hasNext()) vm.next()
             }
             override fun onVideoSizeChanged(size: VideoSize) {
                 if (size.width > 0 && size.height > 0)
@@ -147,8 +194,22 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
         )
     }
 
+    if (showCast) CastSheet(onDismiss = { showCast = false })
+
     val videoBox: @Composable (Modifier) -> Unit = { mod ->
-        VideoSurface(
+        if (casting) CastPanel(
+            modifier = mod,
+            cast = cast,
+            episodeTitle = castTitle,
+            hasPrev = ui.index > 0,
+            hasNext = ui.index + 1 < ui.chapters.size,
+            busy = ui.resolving,
+            error = ui.error,
+            onPrev = { vm.prev() },
+            onNext = { vm.next() },
+            onRetry = { vm.play(ui.index) },
+            onOpenSheet = { showCast = true },
+        ) else VideoSurface(
             player = player,
             modifier = mod,
             title = ui.chapters.getOrNull(ui.index)?.title.orEmpty(),
@@ -167,6 +228,7 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
             onSpeed = { s -> scope.launch { AppSettings.setVideoSpeed(app, s) } },
             onSkipSettings = { showSkip = true },
             onToggleFullscreen = { fullscreen = !fullscreen },
+            onCast = { showCast = true },
         )
     }
 
@@ -174,14 +236,21 @@ fun PlayerScreen(ruleId: String, sourceId: String, index: Int, onBack: () -> Uni
 
     Scaffold(topBar = {
         TopAppBar(title = { Text(ui.title, maxLines = 1) },
-            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } })
+            navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, null) } },
+            actions = {
+                IconButton(onClick = { showCast = true }) {
+                    Icon(if (casting) Icons.Default.CastConnected else Icons.Default.Cast, "投屏")
+                }
+            })
     }) { pad ->
         Column(Modifier.padding(pad).fillMaxSize()) {
             // 播放区域跟随视频比例：横屏视频占满宽度；竖屏视频最高占屏幕 60%，两侧留黑边
             BoxWithConstraints(Modifier.fillMaxWidth().background(Color.Black), contentAlignment = Alignment.Center) {
                 val maxH = LocalConfiguration.current.screenHeightDp.dp * 0.6f
-                val h = (maxWidth / videoRatio).coerceAtMost(maxH)
-                videoBox(Modifier.height(h).aspectRatio(videoRatio, matchHeightConstraintsFirst = true))
+                // 投屏时用 16:9 放控制面板
+                val ratio = if (casting) 16f / 9f else videoRatio
+                val h = (maxWidth / ratio).coerceAtMost(maxH)
+                videoBox(Modifier.height(h).aspectRatio(ratio, matchHeightConstraintsFirst = true))
             }
             Text(ui.chapters.getOrNull(ui.index)?.title ?: "", Modifier.padding(12.dp),
                 style = MaterialTheme.typography.titleSmall)

@@ -25,3 +25,7 @@
 -dontwarn com.jayway.jsonpath.spi.json.TapestryJsonProvider
 -dontwarn com.jayway.jsonpath.spi.mapper.GsonMappingProvider
 -dontwarn com.jayway.jsonpath.spi.mapper.TapestryMappingProvider
+
+# 投屏用的 NanoHTTPD
+-keep class fi.iki.elonen.** { *; }
+-dontwarn fi.iki.elonen.**

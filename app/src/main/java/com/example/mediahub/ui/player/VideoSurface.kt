@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -87,6 +88,7 @@ fun VideoSurface(
     onSpeed: (Float) -> Unit,
     onSkipSettings: () -> Unit,
     onToggleFullscreen: () -> Unit,
+    onCast: (() -> Unit)? = null,
 ) {
     val ctx = LocalContext.current
     val activity = ctx as? Activity
@@ -325,6 +327,9 @@ fun VideoSurface(
                     }
                     IconButton(onClick = { onSkipSettings(); poke++ }) {
                         Icon(Icons.Default.Timer, "跳过片头片尾", tint = Color.White)
+                    }
+                    if (onCast != null) IconButton(onClick = { onCast(); poke++ }) {
+                        Icon(Icons.Default.Cast, "投屏", tint = Color.White)
                     }
                 }
 
